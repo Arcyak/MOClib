@@ -2,15 +2,6 @@
 Instructions:
 
 
-1. Extract table in VOTable format (see the examples in section 4, p.3)).
-Choose an API todo that (eg: astropy, astroquery or pyvo).
-Note: choose a table having position and query a reasonable number of records.
-
-
-2. Build an astropy table with an added HEALPix column in the order that you choose (eg: order 10) You
-can use the astropy-healpix library to compute the HEALPix number from ra,dec.
-
-
 3. Create a simple HEALPix pixelation from the HEALPix column (so a kind of MOC but in a unique
 order). Your code must contains a text serialization.
 Example of HEALPix pixelation serialization: 6/17407 18090 18773 19456
@@ -35,10 +26,15 @@ elements.
 Note: for this project a debugger could help (for instance pdb)
 """
 
-from astropy.table import Table
+from astropy.table import Table, Column
+from astropy_healpix import HEALPix
+from astropy.coordinates import Galactic, SkyCoord
 
 
-def get_votable(catalogue: str, out_max: int = 10000):
+# 1. Extract table in VOTable format (see the examples in section 4, p.3)).
+# Choose an API todo that (eg: astropy, astroquery or pyvo).
+# Note: choose a table having position and query a reasonable number of records.
+def get_votable(catalogue: str, out_max: int = 10000) -> Table:
     """get VOTable from a VizieR catalogue for further studies.
     :param catalogue : VizieR catalogue name
     :param out_max: max number of objects, default: 10000
@@ -48,9 +44,28 @@ def get_votable(catalogue: str, out_max: int = 10000):
     return Table.read(url)
 
 
+def build_healpix_table(table: Table):
+    """2. Build an astropy table with an added HEALPix column in the order that you choose (eg: order 10) You
+    can use the astropy-healpix library to compute the HEALPix number from ra,dec.
+
+    :param table: Table
+    """
+
+    hp = HEALPix(nside=2**10, order='nested', frame=Galactic())
+
+    new_column = Column( [hp.skycoord_to_healpix(SkyCoord(table["_RA"][i], table["_DE"][i], unit="deg"))
+                          for i in range(len(table["_RA"]))], name="HEALPix", dtype=int )
+    table.add_column(new_column)
+
+    return table
+
+
 # self.nside = 2**self.order
 
 
 if __name__ == '__main__':
-    print(get_votable('II/7A/catalog', 100))
-
+    t = get_votable('II/7A/catalog')
+    # print(t)
+    t1 = build_healpix_table(t)
+    print('-------------')
+    print(t1)
