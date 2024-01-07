@@ -28,10 +28,10 @@ class Loader:
         :param _out_max: Max number of entries in the table, default:10000
         :param _order: Order of HEALPix calculation, default:10
         """
-        self.__url = f"https://Vizier.cds.unistra.fr/viz-bin/votable?-source={catalogue}&-out.max={out_max}"
-        self.__catalogue = catalogue
+        self.__url = f"https://Vizier.cds.unistra.fr/viz-bin/votable?-source={_catalogue}&-out.max={_out_max}"
+        self.__catalogue = _catalogue
 
-        self.__n_side = 2**order
+        self.__n_side = 2**_order
         self.__healpix = HEALPix(nside=self.__n_side, order="nested", frame="fk5")
 
     def get_votable(self) -> Table:
@@ -45,17 +45,20 @@ class Loader:
 
         # Check the coordinate system and if needed converts the RA and DE to J2000
         for coosys in vtable.iter_coosys():
-            print(f"Coordinate system of the table: {coosys.system}, {coosys.ID}")
+            print(f"Coordinate system of the table: {coosys.system}, {coosys.ID}\n")
             table = update_coordinate_system(table, coosys.system)
 
         return table
 
-    def build_healpix_table(self, _table: Table) -> Table:
+    def build_healpix_table(self, _table: Table, _rm_duplicates: bool = True) -> Table:
         """Build an astropy table with an added HEALPix column in an order.
         Use the astropy-healpix library to compute the HEALPix number from ra,dec
 
         :param _table: Table from which to build the HEALPix column
+        :param _rm_duplicates: bool to decide whether to remove the duplicated HEALPix numbers or not
         """
+
+        tmp = _table.copy()
 
         # Create a new column name HEALPix from the RA and DE columns
         ra: str = next((col for col in _table.columns if re.match(r".*RA.*", col)), None)
@@ -66,18 +69,21 @@ class Loader:
                     for i in range(len(_table))], name="HEALPix", dtype=int))
 
         # Add the column to the table
-        _table.add_column(new_column)
+        tmp.add_column(new_column)
 
         # Remove the duplicated Healpix lines
-        _table = remove_duplicates(_table)
+        if not _rm_duplicates:
+            print(f"Duplicates were not removed.\n")
+        else:
+            tmp = remove_duplicates(tmp)
 
-        return _table
+        return tmp
 
 
 class Moc_tree:
     """Moc_tree class able to separate the HEALPix from a Table object into HEALPix of different orders"""
     def __init__(self, _order: int) -> None:
-        self.__nodes = {_order: []}
+        self.nodes = {_order: []}
 
     def build_moc_tree(self, _table: Table) -> None:
         """Build a MOC tree from a VOTable having a HEALPix column
@@ -89,20 +95,20 @@ class Moc_tree:
             "No HEALPix column in the given table. Please build it before using this method"
 
         # Get the initial order and update the dict
-        _order: int = list(self.__nodes.keys())[0]
-        self.__nodes[_order] = list(_table["HEALPix"])
+        _order: int = list(self.nodes.keys())[0]
+        self.nodes[_order] = list(_table["HEALPix"])
 
-        while _order in list(self.__nodes.keys()):
-            tmp = self.__nodes[_order].copy()
+        while _order in list(self.nodes.keys()):
+            tmp = self.nodes[_order].copy()
 
-            for ipix in self.__nodes[_order]:
-                print(tmp == self.__nodes[_order])
+            for ipix in self.nodes[_order]:
+                # print(tmp == self.nodes[_order])
 
                 n_ipix = ipix >> 2
 
                 # Check the neighbouring cells
                 child_nodes = [(n_ipix << 2), (n_ipix << 2) + 1, (n_ipix << 2) + 2, (n_ipix << 2) + 3]
-                if all(item in self.__nodes[_order] for item in child_nodes):
+                if all(item in self.nodes[_order] for item in child_nodes):
 
                     # We found 4 consecutive healpix, we can merge the neighbouring cells
                     self.add_node(_order-1, n_ipix)
@@ -117,10 +123,10 @@ class Moc_tree:
         :param _ipix: value of the HEALPix node
         """
 
-        if _order not in self.__nodes:
-            self.__nodes[_order] = [_ipix]
+        if _order not in self.nodes:
+            self.nodes[_order] = [_ipix]
         else:
-            self.__nodes[_order].append(_ipix)
+            self.nodes[_order].append(_ipix)
 
     def del_nodes(self, _order: int, _node_list: list) -> None:
         """Del child nodes from the tree
@@ -130,7 +136,7 @@ class Moc_tree:
         """
 
         for item in _node_list:
-            self.__nodes[_order].remove(item)
+            self.nodes[_order].remove(item)
 
     def serialize_moc(self) -> str:
         """Serialize the MOC tree"""
@@ -138,7 +144,7 @@ class Moc_tree:
         moc_serialization = ""
 
         # Sort the items of the dict to retrieve the different HEALPix orders in the good order
-        for _order, ipix_list in sorted(self.__nodes.items()):
+        for _order, ipix_list in sorted(self.nodes.items()):
             moc_serialization += serialize_healpix(ipix_list, _order)+"\n"
 
         return moc_serialization
@@ -256,29 +262,16 @@ if __name__ == '__main__':
     moc = MOC.from_vizier_table(catalogue, nside)
     print('\n', moc_test == moc)
 
-    difference(moc_test.to_string(), moc.to_string())
-
-    import matplotlib.pyplot as plt
-
-    fig = plt.figure(figsize=(10, 10))
-    wcs = moc_test.wcs(fig)
-    ax = fig.add_subplot(projection=wcs)
-    moc_test.fill(ax, wcs, color='blue')
-
-    plt.show()
-
-
-
-
-
-
-
-
-
+    # import matplotlib.pyplot as plt
     #
     # fig = plt.figure(figsize=(10, 10))
-    # wcsn = moc.wcs(fig)
-    # ax = fig.add_subplot(projection=wcsn)
-    # moc.fill(ax, wcsn, color='red')
+    # wcs = custom_moc.wcs(fig)
+    # ax = fig.add_subplot(projection=wcs)
+    # custom_moc.fill(ax, wcs, color='blue')
     # plt.show()
-
+    #
+    # fig = plt.figure(figsize=(10, 10))
+    # wcs = moc.wcs(fig)
+    # ax = fig.add_subplot(projection=wcs)
+    # moc.fill(ax, wcs, color='red')
+    # plt.show()
