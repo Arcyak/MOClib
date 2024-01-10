@@ -1,3 +1,6 @@
+  [![License](https://img.shields.io/static/v1?label=License&message=MIT&color=blue&?style=plastic&logo=appveyor)](https://opensource.org/license/MIT)
+  [![Python 3.7](https://img.shields.io/badge/python-3.7-green.svg)](https://www.python.org/downloads/release/python-370/)
+
 # MOClib - A custom MOC library
 __Author:__ Yannick Hénin<br>
 __University of Strasbourg__
