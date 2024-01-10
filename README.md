@@ -9,7 +9,11 @@ __University of Strasbourg__
 
 ## Description
 
-Building a Python MOC library that creates a MOC from list of HEALPix cells.  Note: the project asks to create a library and to illustrate it into a notebook. The best way to provide a library, consists to  make a module that can be reused. As a bonus, I also package the module
+MOClib is a custom Python MOC library that uses the Astropy library to build MOC trees and serialization from HEALPix cells.
+The library contains actually two classes: `python Loader and Moc_tree`. <br>
+The Loader class is able to query a VOTable from Vizier, update the coordinate system if needed and create the HEALPix number associated to each object.
+The Moc_tree class takes care of processing the cells from the HEALPix column of a astropy.Table object. A MOC serialization can be obtained from the Moc_tree class for further analysis.
+
 
 ## Example
 
@@ -25,7 +29,7 @@ To install the package, please use pip or conda :
 ```shell
 > pip install MOClib/
 OR
-> conda install moc_library/
+> conda install MOClib/
 ```
 
 You can already try to load ipyaladin in a notebook.
@@ -33,7 +37,7 @@ You can already try to load ipyaladin in a notebook.
 ```python
 from moc_library import Loader, Moc_tree
 
-loader = Loader(_catalogue= ,_out_max=10000, _order=7, _source="CDS")
+loader = Loader(_catalogue='II/7A/catalog', _out_max=10000, _order=7, _source="CDS")
 votable = loader.get_votable()
 ...
 moc_tree = Moc_tree(_order=7)
