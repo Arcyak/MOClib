@@ -20,7 +20,7 @@ log.setLevel("ERROR")
 
 class Loader:
     """Loader class, allow one to query a Table from Vizier and do preliminary work on the Table object"""
-    def __init__(self, _catalogue: str, _out_max: int = 10000, _order: int = 10, source: str = 'CDS') -> None:
+    def __init__(self, _catalogue: str, _out_max: int = 10000, _order: int = 10, _source: str = 'CDS') -> None:
         """
         :param _catalogue: Name of the catalogue
         :param _out_max: Max number of entries in the table, default:10000
@@ -29,7 +29,7 @@ class Loader:
 
         self.__catalogue = _catalogue
 
-        match source:
+        match _source:
             case 'CDS':
                 # CDS Vizier (Strasbourg)
                 self.__url = f"https://vizier.cds.unistra.fr/viz-bin/votable?-source={_catalogue}&-out.max={_out_max}"
