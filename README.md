@@ -4,7 +4,7 @@ __University of Strasbourg__
 
 ## Table of Content
 - [Description](#description)
-- [Examples](#examples)
+- [Example](#example)
 - [Installation](#installation)
 
 ## Description
@@ -12,7 +12,9 @@ __University of Strasbourg__
 MOClib is a custom Python MOC library that uses the Astropy library to build MOC trees and serialization from HEALPix cells.
 The library contains actually two classes: `Loader` and  `Moc_tree`. <br>
 The `Loader` class is able to query a VOTable from Vizier, update the coordinate system if needed and create the HEALPix number associated to each object.
-The `Moc_tree` class takes care of processing the cells from the HEALPix column of a astropy.Table object. A MOC serialization can be obtained from the Moc_tree class for further analysis.
+The `Moc_tree` class takes care of processing the cells from the HEALPix column of a astropy.Table object. A MOC serialization can be obtained from the Moc_tree class for further analysis.<br>
+<br>
+This package is composed of: the `moc_library module`, an example `jupyter notebook`, a `requirements.txt` file.
 
 
 ## Example
