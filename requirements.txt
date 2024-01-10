@@ -1,0 +1,5 @@
+setuptools~=68.2.2
+astropy~=6.0.0
+numpy~=1.26.2
+mocpy~=0.12.3
+matplotlib

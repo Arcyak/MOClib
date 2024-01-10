@@ -1,38 +1,45 @@
 """
-MOC library using HEALPix for a M2 Python project.
+Python custom MOC library that creates MOC objects from HEALPix.
 
 Author: Yannick HÉNIN
 University of Strasbourg
 """
 
-from astropy import log
+import re
 
-from astropy.table import Table, Column
-from astropy.io import votable
-from astropy.coordinates import SkyCoord
-from astropy_healpix import HEALPix
-from mocpy.moc import MOC
 import astropy.units as u
 import numpy as np
-
-import re
+from astropy import log
+from astropy.coordinates import SkyCoord
+from astropy.io import votable
+from astropy.table import Table, Column
+from astropy_healpix import HEALPix
 
 log.setLevel("ERROR")
 
 
 class Loader:
     """Loader class, allow one to query a Table from Vizier and do preliminary work on the Table object"""
-    def __init__(self, _catalogue: str, _out_max: int = 10000, _order: int = 10) -> None:
+    def __init__(self, _catalogue: str, _out_max: int = 10000, _order: int = 10, source: str = 'CDS') -> None:
         """
         :param _catalogue: Name of the catalogue
         :param _out_max: Max number of entries in the table, default:10000
         :param _order: Order of HEALPix calculation, default:10
         """
-        self.__url = f"https://Vizier.cds.unistra.fr/viz-bin/votable?-source={_catalogue}&-out.max={_out_max}"
+
         self.__catalogue = _catalogue
 
+        match source:
+            case 'CDS':
+                # CDS Vizier (Strasbourg)
+                self.__url = f"https://vizier.cds.unistra.fr/viz-bin/votable?-source={_catalogue}&-out.max={_out_max}"
+
+            case "CFA":
+                # CFA Vizier (Harvard)
+                self.__url = f"https://vizier.cfa.harvard.edu/viz-bin/votable?-source={_catalogue}&-out.max={_out_max}"
+
         self.__n_side = 2**_order
-        self.__healpix = HEALPix(nside=self.__n_side, order="nested", frame="fk5")
+        self.__healpix = HEALPix(nside=self.__n_side, order="nested", frame="icrs")
 
     def get_votable(self) -> Table:
         """Get VOTable from a Vizier catalogue for further studies"""
@@ -45,7 +52,7 @@ class Loader:
 
         # Check the coordinate system and if needed converts the RA and DE to J2000
         for coosys in vtable.iter_coosys():
-            print(f"Coordinate system of the table: {coosys.system}, {coosys.ID}\n")
+            print(f"Coordinate system of the table: {coosys.system}\n")
             table = update_coordinate_system(table, coosys.system)
 
         return table
@@ -64,9 +71,8 @@ class Loader:
         ra: str = next((col for col in _table.columns if re.match(r".*RA.*", col)), None)
         de: str = next((col for col in _table.columns if re.match(r".*DE.*", col)), None)
 
-        new_column = (
-            Column([self.__healpix.skycoord_to_healpix(SkyCoord(_table[ra][i], _table[de][i], unit="deg"))
-                    for i in range(len(_table))], name="HEALPix", dtype=int))
+        healpix_col = self.__healpix.lonlat_to_healpix(lon=np.array(_table[ra])*u.deg, lat=np.array(_table[de])*u.deg)
+        new_column = Column(healpix_col, name="HEALPix", dtype=int)
 
         # Add the column to the table
         tmp.add_column(new_column)
@@ -101,9 +107,7 @@ class Moc_tree:
         while _order in list(self.nodes.keys()):
             tmp = self.nodes[_order].copy()
 
-            for ipix in self.nodes[_order]:
-                # print(tmp == self.nodes[_order])
-
+            for ipix in tmp:
                 n_ipix = ipix >> 2
 
                 # Check the neighbouring cells
@@ -112,7 +116,7 @@ class Moc_tree:
 
                     # We found 4 consecutive healpix, we can merge the neighbouring cells
                     self.add_node(_order-1, n_ipix)
-                    self.del_nodes(_order, child_nodes)  # Seems to be an error here on the update of the list
+                    self.del_nodes(_order, child_nodes)
 
             _order -= 1
 
@@ -151,28 +155,29 @@ class Moc_tree:
 
 
 def update_coordinate_system(_table: Table, _coosys: str) -> Table:
-    """Update the coordinate system to FK5 if needed
+    """Update the coordinate system of the table to ICRS if needed.
 
     :param _table: Table from which to update the coordinates
     :param _coosys: coordinate system"""
 
+    # Detect B1950 coordinates
     coord_system = re.match(r".*FK4.*", _coosys)
     if coord_system is not None:
         ra: str = next((col for col in _table.columns if re.match(r".*RA.*", col)), None)
         de: str = next((col for col in _table.columns if re.match(r".*DE.*", col)), None)
 
-        # Convert B1950 coordinates to J2000 if __RA and __DEC columns exist
-        b1950_coords = SkyCoord(ra=_table[ra], dec=_table[de], unit=(u.deg, u.deg), frame="fk4")
-        j2000_coords = b1950_coords.transform_to("fk5")
+        # Convert B1950 coordinates to J2000
+        old_coords = SkyCoord(ra=_table[ra], dec=_table[de], unit=(u.hourangle, u.deg), frame="fk4")
+        new_coords = old_coords.transform_to("icrs")
 
         # Update the table with J2000 coordinates
-        _table["RAJ2000"] = j2000_coords.ra
-        _table["DEJ2000"] = j2000_coords.dec
+        _table["RAJ2000"] = new_coords.ra
+        _table["DEJ2000"] = new_coords.dec
 
-        # Remove B1950 columns
+        # Remove the columns
         _table.remove_columns([ra, de])
 
-        print("Coordinates converted to FK5.")
+        print("Coordinates converted to icrs.")
 
     return _table
 
@@ -185,18 +190,8 @@ def remove_duplicates(_table: Table) -> Table:
     _, indices = np.unique(_table["HEALPix"], return_index=True)
     print(f"Removed {len(_table) - len(indices)} duplicates.\n")
 
-    return _table[indices]
-
-
-def remove_duplicates_in_list(_list: list) -> list:
-    """Remove ipix duplicates in a table and sorts the table
-
-    :param _list: Table from which to remove duplicates"""
-
-    _, indices = np.unique(_list, return_index=True)
-    print(f"Removed {len(_list) - len(indices)} duplicates.\n")
-
-    return list(np.array(_list)[indices])
+    _table = _table[indices]
+    return _table[np.where(_table["HEALPix"] != -1)]
 
 
 def serialize_healpix(_healpix_table: list, _order: int) -> str:
@@ -218,60 +213,3 @@ def serialize_moc_tree(moc_tree: Moc_tree) -> str:
     :param moc_tree: Moc_tree from which is to be serialized"""
 
     return moc_tree.serialize_moc()
-
-
-def difference(string1, string2):
-    # Split both strings into list items
-    string1 = string1.split()
-    string2 = string2.split()
-
-    A = set(string1)  # Store all string1 list items in set A
-    B = set(string2)  # Store all string2 list items in set B
-
-    str_diff = A.symmetric_difference(B)
-    isEmpty = (len(str_diff) == 0)
-
-    if isEmpty:
-        print("No Difference. Both Strings Are Same")
-    else:
-        print("The Difference Between Two Strings: ")
-        print(str_diff)
-
-
-if __name__ == '__main__':
-    # 'II/7A/catalog' : UBVRIJKLMNH Photoelectric Catalogue (Morel+ 1978)
-    # 'J/ApJ/831/67/table1' : Galactic CHaMP. III. 12CO dense clump properties (Barnes+, 2016)
-    # 'J/ApJ/804/L15' : SDSS-DR7 broad-line QSOs (Sun+, 2015)
-    # 'VII/26D/catalog' : Uppsala General Catalogue of Galaxies (UGC) (1973)
-    # 'I/298/table3' :  Catalog of Northern stars with annual proper motions larger than 0.15" (2005)
-
-    catalogue = 'II/7A/catalog'
-    out_max = 10000
-
-    order = 8
-    nside = 2**order
-
-    loader = Loader(_catalogue=catalogue, _out_max=out_max, _order=order)
-
-    t = loader.get_votable()
-    t1 = loader.build_healpix_table(t)
-    tree = Moc_tree(order)
-    tree.build_moc_tree(t1)
-
-    moc_test = MOC.from_string(tree.serialize_moc())
-    moc = MOC.from_vizier_table(catalogue, nside)
-    print('\n', moc_test == moc)
-
-    # import matplotlib.pyplot as plt
-    #
-    # fig = plt.figure(figsize=(10, 10))
-    # wcs = custom_moc.wcs(fig)
-    # ax = fig.add_subplot(projection=wcs)
-    # custom_moc.fill(ax, wcs, color='blue')
-    # plt.show()
-    #
-    # fig = plt.figure(figsize=(10, 10))
-    # wcs = moc.wcs(fig)
-    # ax = fig.add_subplot(projection=wcs)
-    # moc.fill(ax, wcs, color='red')
-    # plt.show()
